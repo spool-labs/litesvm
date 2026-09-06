@@ -13,10 +13,12 @@ use {
     solana_message::{
         v0::Message as MessageV0, AddressLookupTableAccount, Message, VersionedMessage,
     },
+    solana_signature::Signature,
     solana_signer::Signer,
     solana_stake_interface::instruction as stake_instruction,
     solana_system_interface::instruction::transfer,
     solana_transaction::{versioned::VersionedTransaction, Transaction},
+    solana_transaction_error::TransactionError,
     std::time::Instant,
 };
 
@@ -50,7 +52,7 @@ fn signed(svm: &LiteSVM, payer: &Keypair, ixs: &[Instruction]) -> VersionedTrans
 /// The two paths on one state, which is the whole claim
 fn agree(svm: &LiteSVM, case: &str, tx: VersionedTransaction) {
     let held = svm.simulate_transaction_no_verify(tx.clone());
-    let off_lock = svm.prepare_simulation(tx).run();
+    let off_lock = svm.prepare_simulation_no_verify(tx).run();
     assert_eq!(held, off_lock, "{case} answered differently off the lock");
 }
 
@@ -152,6 +154,33 @@ fn a_prepared_simulation_answers_what_the_held_one_does() {
     agree(&svm, "a transaction through a lookup table", through_table);
 }
 
+/// A bad signature is refused off the lock exactly when the instance refuses it
+#[test]
+fn a_prepared_simulation_checks_signatures_the_same_way() {
+    let (svm, payer) = daemon_svm();
+    let mut tx = signed(
+        &svm,
+        &payer,
+        &[transfer(&payer.pubkey(), &Address::new_unique(), 2_000_000)],
+    );
+    tx.signatures[0] = Signature::default();
+
+    let held = svm.simulate_transaction(tx.clone());
+    let off_lock = svm.prepare_simulation(tx.clone()).run();
+    assert_eq!(
+        held, off_lock,
+        "an unsigned transaction answered differently off the lock"
+    );
+    assert_eq!(
+        held.expect_err("unsigned").err,
+        TransactionError::SignatureFailure
+    );
+
+    svm.prepare_simulation_no_verify(tx)
+        .run()
+        .expect("no verify runs an unsigned transaction");
+}
+
 /// Simulation is not the only reader of a stale blockhash, so it answers for one too
 #[test]
 fn a_prepared_simulation_ages_a_blockhash_the_same_way() {
@@ -219,7 +248,7 @@ fn measure_prepare_against_run() {
     let mut run = 0u64;
     for _ in 0..ROUNDS {
         let at = Instant::now();
-        let prepared = svm.prepare_simulation(tx.clone());
+        let prepared = svm.prepare_simulation_no_verify(tx.clone());
         prepare += at.elapsed().as_nanos() as u64;
         let at = Instant::now();
         prepared.run().expect("simulate");

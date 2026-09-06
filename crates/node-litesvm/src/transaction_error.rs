@@ -93,8 +93,12 @@ pub type InstructionError =
 //     }
 // }
 
-fn convert_instruction_error(e: InstructionErrorOriginal) -> InstructionError {
-    match e {
+fn unmapped(err: &dyn fmt::Debug) -> napi::Error {
+    napi::Error::from_reason(format!("no binding for {err:?}"))
+}
+
+fn convert_instruction_error(e: InstructionErrorOriginal) -> napi::Result<InstructionError> {
+    Ok(match e {
         InstructionErrorOriginal::Custom(code) => {
             InstructionError::B(InstructionErrorCustom { code })
         }
@@ -258,8 +262,8 @@ fn convert_instruction_error(e: InstructionErrorOriginal) -> InstructionError {
         InstructionErrorOriginal::BuiltinProgramsMustConsumeComputeUnits => {
             InstructionError::A(InstructionErrorFieldless::BuiltinProgramsMustConsumeComputeUnits)
         }
-        _ => InstructionError::A(InstructionErrorFieldless::GenericError),
-    }
+        _ => return Err(unmapped(&e)),
+    })
 }
 
 #[derive(Debug)]
@@ -371,12 +375,14 @@ pub type TransactionError = Either5<
     TransactionErrorProgramExecutionTemporarilyRestricted,
 >;
 
-pub(crate) fn convert_transaction_error(w: TransactionErrorOriginal) -> TransactionError {
-    match w {
+pub(crate) fn convert_transaction_error(
+    w: TransactionErrorOriginal,
+) -> napi::Result<TransactionError> {
+    Ok(match w {
         TransactionErrorOriginal::InstructionError(index, err) => {
             TransactionError::B(TransactionErrorInstructionError {
                 index,
-                error: convert_instruction_error(err),
+                error: convert_instruction_error(err)?,
             })
         }
         TransactionErrorOriginal::DuplicateInstruction(index) => {
@@ -495,8 +501,6 @@ pub(crate) fn convert_transaction_error(w: TransactionErrorOriginal) -> Transact
         TransactionErrorOriginal::CommitCancelled => {
             TransactionError::A(TransactionErrorFieldless::CommitCancelled)
         }
-        _ => {
-            unreachable!("every TransactionError variant in the pinned solana-sdk is matched above")
-        }
-    }
+        _ => return Err(unmapped(&w)),
+    })
 }

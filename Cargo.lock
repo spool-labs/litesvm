@@ -3099,7 +3099,7 @@ dependencies = [
 [[package]]
 name = "solana-address"
 version = "2.6.1"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "borsh",
  "bytemuck",
@@ -3140,7 +3140,7 @@ dependencies = [
 [[package]]
 name = "solana-atomic-u64"
 version = "3.0.1"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "parking_lot",
 ]
@@ -3385,12 +3385,12 @@ checksum = "57e5b1c0bc1d4a4d10c88a4100499d954c09d3fecfae4912c1a074dff68b1738"
 [[package]]
 name = "solana-define-syscall"
 version = "5.2.0"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 
 [[package]]
 name = "solana-derivation-path"
 version = "3.0.0"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "derivation-path",
  "qstring",
@@ -3523,7 +3523,7 @@ dependencies = [
 [[package]]
 name = "solana-hash"
 version = "4.5.0"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "bytemuck",
  "bytemuck_derive",
@@ -3558,7 +3558,7 @@ dependencies = [
 [[package]]
 name = "solana-instruction-error"
 version = "2.4.0"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "num-traits",
  "serde",
@@ -3615,7 +3615,7 @@ dependencies = [
 [[package]]
 name = "solana-keypair"
 version = "3.1.2"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "rand 0.9.5",
  "solana-address 2.6.1",
@@ -3745,7 +3745,7 @@ dependencies = [
 [[package]]
 name = "solana-nullable"
 version = "1.3.0"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "borsh",
  "bytemuck",
@@ -3799,7 +3799,7 @@ dependencies = [
 [[package]]
 name = "solana-program-error"
 version = "3.0.1"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "borsh",
 ]
@@ -3887,7 +3887,7 @@ dependencies = [
 [[package]]
 name = "solana-pubkey"
 version = "4.2.0"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "solana-address 2.6.1",
 ]
@@ -3942,7 +3942,7 @@ dependencies = [
 [[package]]
 name = "solana-sanitize"
 version = "3.0.1"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 
 [[package]]
 name = "solana-sbpf"
@@ -4026,7 +4026,7 @@ dependencies = [
 [[package]]
 name = "solana-seed-derivable"
 version = "3.0.0"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "solana-derivation-path",
 ]
@@ -4034,7 +4034,7 @@ dependencies = [
 [[package]]
 name = "solana-seed-phrase"
 version = "3.0.0"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "hmac 0.12.1",
  "pbkdf2",
@@ -4064,7 +4064,7 @@ dependencies = [
 [[package]]
 name = "solana-sha256-hasher"
 version = "3.1.0"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "sha2 0.10.9",
  "solana-define-syscall 5.2.0",
@@ -4095,7 +4095,7 @@ dependencies = [
 [[package]]
 name = "solana-signature"
 version = "3.4.1"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "serde",
  "solana-ed25519",
@@ -4107,7 +4107,7 @@ dependencies = [
 [[package]]
 name = "solana-signer"
 version = "3.0.1"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "solana-pubkey 4.2.0",
  "solana-signature",
@@ -4423,7 +4423,7 @@ dependencies = [
 [[package]]
 name = "solana-transaction-error"
 version = "3.3.2"
-source = "git+https://github.com/spool-labs/solana-sdk?branch=master#27b2df17006e7c6f3abd200176cddf57f0365c48"
+source = "git+https://github.com/spool-labs/solana-sdk?rev=c44317375e1ef5c73c49e869f873a04b503419f3#c44317375e1ef5c73c49e869f873a04b503419f3"
 dependencies = [
  "serde",
  "serde_derive",

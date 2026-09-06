@@ -142,7 +142,7 @@ impl FailedTransactionMetadata {
     #[napi(
         ts_return_type = "TransactionErrorFieldless | TransactionErrorInstructionError | TransactionErrorDuplicateInstruction | TransactionErrorInsufficientFundsForRent | TransactionErrorProgramExecutionTemporarilyRestricted"
     )]
-    pub fn err(&self) -> TransactionError {
+    pub fn err(&self) -> napi::Result<TransactionError> {
         convert_transaction_error(self.0.err.clone())
     }
 

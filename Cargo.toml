@@ -124,20 +124,20 @@ codegen-units = 1
 result_large_err = "allow"
 
 [patch.crates-io]
-solana-address = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-atomic-u64 = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-define-syscall = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-derivation-path = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-hash = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-instruction-error = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-keypair = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-nullable = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-program-error = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-pubkey = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-sanitize = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-seed-derivable = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-seed-phrase = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-sha256-hasher = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-signature = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-signer = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
-solana-transaction-error = { git = "https://github.com/spool-labs/solana-sdk", branch = "master" }
+solana-address = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-atomic-u64 = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-define-syscall = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-derivation-path = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-hash = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-instruction-error = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-keypair = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-nullable = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-program-error = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-pubkey = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-sanitize = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-seed-derivable = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-seed-phrase = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-sha256-hasher = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-signature = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-signer = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }
+solana-transaction-error = { git = "https://github.com/spool-labs/solana-sdk", rev = "c44317375e1ef5c73c49e869f873a04b503419f3" }

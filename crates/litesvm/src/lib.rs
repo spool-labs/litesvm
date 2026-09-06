@@ -289,7 +289,7 @@ Other things you can do with `litesvm` include:
 | `precompiles` | Loads the standard precompiles (ed25519, secp256k1) alongside the builtins. Enables [`with_precompiles`](LiteSVM::with_precompiles). |
 | `invocation-inspect-callback` | Enables the [`InvocationInspectCallback`] trait and [`set_invocation_inspect_callback`](LiteSVM::set_invocation_inspect_callback), giving low-level access to the `InvokeContext` before and after each transaction. |
 | `register-tracing` | Enables BPF register-level tracing. Implies `invocation-inspect-callback`. See [`LiteSVM::new_debuggable`] and [`register_tracing::DefaultRegisterTracingCallback`]. |
-| `hashbrown` | Switches internal hash maps to `hashbrown`. |
+| `hashbrown` | Switches internal hash maps to `hashbrown`, whose foldhash is seeded per process but not built to resist an attacker who can observe hash timings. Leave it off where untrusted parties choose account keys. |
 | `serde` | Enables serde serialization/deserialization on internal types. |
 | `nodejs-internal` | Used by the Node.js bindings; not intended for direct use. |
 | `internal-test` | Enables internal test helpers; not intended for direct use. |
@@ -1788,11 +1788,30 @@ impl LiteSVM {
         simulation_outcome(result, log_collector)
     }
 
-    /// Copies what tx reads under one guard into a simulation that runs off this instance
+    /// Like simulate_transaction, but copies what tx reads under one guard into a run off this instance
     pub fn prepare_simulation(&self, tx: impl Into<VersionedTransaction>) -> PreparedSimulation {
-        let prepared = self
-            .sanitize_transaction_no_verify(tx.into())
-            .map(|sanitized| (self.simulation_view(&sanitized), sanitized));
+        self.prepare_simulation_inner(tx.into(), self.sigverify)
+    }
+
+    /// Prepares without verifying signatures, the sigVerify default of simulateTransaction
+    pub fn prepare_simulation_no_verify(
+        &self,
+        tx: impl Into<VersionedTransaction>,
+    ) -> PreparedSimulation {
+        self.prepare_simulation_inner(tx.into(), false)
+    }
+
+    fn prepare_simulation_inner(
+        &self,
+        tx: VersionedTransaction,
+        verify: bool,
+    ) -> PreparedSimulation {
+        let sanitized = if verify {
+            self.sanitize_transaction(tx)
+        } else {
+            self.sanitize_transaction_no_verify(tx)
+        };
+        let prepared = sanitized.map(|sanitized| (self.simulation_view(&sanitized), sanitized));
         PreparedSimulation::new(prepared, self.log_bytes_limit)
     }
 
