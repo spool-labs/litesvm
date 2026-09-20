@@ -7,8 +7,7 @@ use {
     solana_fee_structure::{FeeBin, FeeStructure},
     solana_hash::Hash,
     solana_message::{
-        compiled_instruction::CompiledInstruction,
-        inner_instruction::{InnerInstruction, InnerInstructionsList},
+        compiled_instruction::CompiledInstruction, inner_instruction::InnerInstruction,
     },
     solana_signature::Signature,
     solana_transaction_context::transaction::TransactionReturnData,
@@ -17,19 +16,54 @@ use {
 };
 
 #[derive(SchemaWrite, SchemaRead)]
-#[wincode(from = "FeeBin")]
 pub(crate) struct FeeBinWire {
     pub limit: u64,
     pub fee: u64,
 }
 
+impl From<FeeBin> for FeeBinWire {
+    fn from(value: FeeBin) -> Self {
+        Self {
+            limit: value.limit,
+            fee: value.fee,
+        }
+    }
+}
+
+impl From<FeeBinWire> for FeeBin {
+    fn from(value: FeeBinWire) -> Self {
+        Self {
+            limit: value.limit,
+            fee: value.fee,
+        }
+    }
+}
+
 #[derive(SchemaWrite, SchemaRead)]
-#[wincode(from = "FeeStructure")]
 pub(crate) struct FeeStructureWire {
     pub lamports_per_signature: u64,
     pub lamports_per_write_lock: u64,
-    #[wincode(with = "Vec<FeeBinWire>")]
-    pub compute_fee_bins: Vec<FeeBin>,
+    pub compute_fee_bins: Vec<FeeBinWire>,
+}
+
+impl From<FeeStructure> for FeeStructureWire {
+    fn from(value: FeeStructure) -> Self {
+        Self {
+            lamports_per_signature: value.lamports_per_signature,
+            lamports_per_write_lock: value.lamports_per_write_lock,
+            compute_fee_bins: value.compute_fee_bins.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<FeeStructureWire> for FeeStructure {
+    fn from(value: FeeStructureWire) -> Self {
+        Self {
+            lamports_per_signature: value.lamports_per_signature,
+            lamports_per_write_lock: value.lamports_per_write_lock,
+            compute_fee_bins: value.compute_fee_bins.into_iter().map(Into::into).collect(),
+        }
+    }
 }
 
 /// Compute-budget layout written by persistence version 1 (LiteSVM v0.15.2).
@@ -159,12 +193,13 @@ impl From<ComputeBudgetV1> for ComputeBudget {
             bls12_381_g2_validate_cost: value.bls12_381_g2_validate_cost,
             bls12_381_one_pair_cost: value.bls12_381_one_pair_cost,
             bls12_381_additional_pair_cost: value.bls12_381_additional_pair_cost,
+            big_modular_exponentiation_base_cost: value.big_modular_exponentiation_base_cost,
+            big_modular_exponentiation_cost_divisor: value.big_modular_exponentiation_cost_divisor,
         }
     }
 }
 
 #[derive(SchemaWrite, SchemaRead)]
-#[wincode(from = "ComputeBudget")]
 pub(crate) struct ComputeBudgetWire {
     pub compute_unit_limit: u64,
     pub log_64_units: u64,
@@ -224,11 +259,161 @@ pub(crate) struct ComputeBudgetWire {
     pub bls12_381_additional_pair_cost: u64,
 }
 
+impl From<ComputeBudget> for ComputeBudgetWire {
+    fn from(value: ComputeBudget) -> Self {
+        Self {
+            compute_unit_limit: value.compute_unit_limit,
+            log_64_units: value.log_64_units,
+            create_program_address_units: value.create_program_address_units,
+            invoke_units: value.invoke_units,
+            max_instruction_stack_depth: value.max_instruction_stack_depth,
+            max_instruction_trace_length: value.max_instruction_trace_length,
+            sha256_base_cost: value.sha256_base_cost,
+            sha256_byte_cost: value.sha256_byte_cost,
+            sha256_max_slices: value.sha256_max_slices,
+            max_call_depth: value.max_call_depth,
+            stack_frame_size: value.stack_frame_size,
+            log_pubkey_units: value.log_pubkey_units,
+            cpi_bytes_per_unit: value.cpi_bytes_per_unit,
+            sysvar_base_cost: value.sysvar_base_cost,
+            secp256k1_recover_cost: value.secp256k1_recover_cost,
+            syscall_base_cost: value.syscall_base_cost,
+            curve25519_edwards_validate_point_cost: value.curve25519_edwards_validate_point_cost,
+            curve25519_edwards_add_cost: value.curve25519_edwards_add_cost,
+            curve25519_edwards_subtract_cost: value.curve25519_edwards_subtract_cost,
+            curve25519_edwards_multiply_cost: value.curve25519_edwards_multiply_cost,
+            curve25519_edwards_msm_base_cost: value.curve25519_edwards_msm_base_cost,
+            curve25519_edwards_msm_incremental_cost: value.curve25519_edwards_msm_incremental_cost,
+            curve25519_ristretto_validate_point_cost: value
+                .curve25519_ristretto_validate_point_cost,
+            curve25519_ristretto_add_cost: value.curve25519_ristretto_add_cost,
+            curve25519_ristretto_subtract_cost: value.curve25519_ristretto_subtract_cost,
+            curve25519_ristretto_multiply_cost: value.curve25519_ristretto_multiply_cost,
+            curve25519_ristretto_msm_base_cost: value.curve25519_ristretto_msm_base_cost,
+            curve25519_ristretto_msm_incremental_cost: value
+                .curve25519_ristretto_msm_incremental_cost,
+            heap_size: value.heap_size,
+            heap_cost: value.heap_cost,
+            mem_op_base_cost: value.mem_op_base_cost,
+            alt_bn128_g1_addition_cost: value.alt_bn128_g1_addition_cost,
+            alt_bn128_g2_addition_cost: value.alt_bn128_g2_addition_cost,
+            alt_bn128_g1_multiplication_cost: value.alt_bn128_g1_multiplication_cost,
+            alt_bn128_g2_multiplication_cost: value.alt_bn128_g2_multiplication_cost,
+            alt_bn128_pairing_one_pair_cost_first: value.alt_bn128_pairing_one_pair_cost_first,
+            alt_bn128_pairing_one_pair_cost_other: value.alt_bn128_pairing_one_pair_cost_other,
+            poseidon_cost_coefficient_a: value.poseidon_cost_coefficient_a,
+            poseidon_cost_coefficient_c: value.poseidon_cost_coefficient_c,
+            get_remaining_compute_units_cost: value.get_remaining_compute_units_cost,
+            alt_bn128_g1_compress: value.alt_bn128_g1_compress,
+            alt_bn128_g1_decompress: value.alt_bn128_g1_decompress,
+            alt_bn128_g2_compress: value.alt_bn128_g2_compress,
+            alt_bn128_g2_decompress: value.alt_bn128_g2_decompress,
+            bls12_381_g1_add_cost: value.bls12_381_g1_add_cost,
+            bls12_381_g2_add_cost: value.bls12_381_g2_add_cost,
+            bls12_381_g1_subtract_cost: value.bls12_381_g1_subtract_cost,
+            bls12_381_g2_subtract_cost: value.bls12_381_g2_subtract_cost,
+            bls12_381_g1_multiply_cost: value.bls12_381_g1_multiply_cost,
+            bls12_381_g2_multiply_cost: value.bls12_381_g2_multiply_cost,
+            bls12_381_g1_decompress_cost: value.bls12_381_g1_decompress_cost,
+            bls12_381_g2_decompress_cost: value.bls12_381_g2_decompress_cost,
+            bls12_381_g1_validate_cost: value.bls12_381_g1_validate_cost,
+            bls12_381_g2_validate_cost: value.bls12_381_g2_validate_cost,
+            bls12_381_one_pair_cost: value.bls12_381_one_pair_cost,
+            bls12_381_additional_pair_cost: value.bls12_381_additional_pair_cost,
+        }
+    }
+}
+
+impl From<ComputeBudgetWire> for ComputeBudget {
+    fn from(value: ComputeBudgetWire) -> Self {
+        Self {
+            compute_unit_limit: value.compute_unit_limit,
+            log_64_units: value.log_64_units,
+            create_program_address_units: value.create_program_address_units,
+            invoke_units: value.invoke_units,
+            max_instruction_stack_depth: value.max_instruction_stack_depth,
+            max_instruction_trace_length: value.max_instruction_trace_length,
+            sha256_base_cost: value.sha256_base_cost,
+            sha256_byte_cost: value.sha256_byte_cost,
+            sha256_max_slices: value.sha256_max_slices,
+            max_call_depth: value.max_call_depth,
+            stack_frame_size: value.stack_frame_size,
+            log_pubkey_units: value.log_pubkey_units,
+            cpi_bytes_per_unit: value.cpi_bytes_per_unit,
+            sysvar_base_cost: value.sysvar_base_cost,
+            secp256k1_recover_cost: value.secp256k1_recover_cost,
+            syscall_base_cost: value.syscall_base_cost,
+            curve25519_edwards_validate_point_cost: value.curve25519_edwards_validate_point_cost,
+            curve25519_edwards_add_cost: value.curve25519_edwards_add_cost,
+            curve25519_edwards_subtract_cost: value.curve25519_edwards_subtract_cost,
+            curve25519_edwards_multiply_cost: value.curve25519_edwards_multiply_cost,
+            curve25519_edwards_msm_base_cost: value.curve25519_edwards_msm_base_cost,
+            curve25519_edwards_msm_incremental_cost: value.curve25519_edwards_msm_incremental_cost,
+            curve25519_ristretto_validate_point_cost: value
+                .curve25519_ristretto_validate_point_cost,
+            curve25519_ristretto_add_cost: value.curve25519_ristretto_add_cost,
+            curve25519_ristretto_subtract_cost: value.curve25519_ristretto_subtract_cost,
+            curve25519_ristretto_multiply_cost: value.curve25519_ristretto_multiply_cost,
+            curve25519_ristretto_msm_base_cost: value.curve25519_ristretto_msm_base_cost,
+            curve25519_ristretto_msm_incremental_cost: value
+                .curve25519_ristretto_msm_incremental_cost,
+            heap_size: value.heap_size,
+            heap_cost: value.heap_cost,
+            mem_op_base_cost: value.mem_op_base_cost,
+            alt_bn128_g1_addition_cost: value.alt_bn128_g1_addition_cost,
+            alt_bn128_g2_addition_cost: value.alt_bn128_g2_addition_cost,
+            alt_bn128_g1_multiplication_cost: value.alt_bn128_g1_multiplication_cost,
+            alt_bn128_g2_multiplication_cost: value.alt_bn128_g2_multiplication_cost,
+            alt_bn128_pairing_one_pair_cost_first: value.alt_bn128_pairing_one_pair_cost_first,
+            alt_bn128_pairing_one_pair_cost_other: value.alt_bn128_pairing_one_pair_cost_other,
+            poseidon_cost_coefficient_a: value.poseidon_cost_coefficient_a,
+            poseidon_cost_coefficient_c: value.poseidon_cost_coefficient_c,
+            get_remaining_compute_units_cost: value.get_remaining_compute_units_cost,
+            alt_bn128_g1_compress: value.alt_bn128_g1_compress,
+            alt_bn128_g1_decompress: value.alt_bn128_g1_decompress,
+            alt_bn128_g2_compress: value.alt_bn128_g2_compress,
+            alt_bn128_g2_decompress: value.alt_bn128_g2_decompress,
+            bls12_381_g1_add_cost: value.bls12_381_g1_add_cost,
+            bls12_381_g2_add_cost: value.bls12_381_g2_add_cost,
+            bls12_381_g1_subtract_cost: value.bls12_381_g1_subtract_cost,
+            bls12_381_g2_subtract_cost: value.bls12_381_g2_subtract_cost,
+            bls12_381_g1_multiply_cost: value.bls12_381_g1_multiply_cost,
+            bls12_381_g2_multiply_cost: value.bls12_381_g2_multiply_cost,
+            bls12_381_g1_decompress_cost: value.bls12_381_g1_decompress_cost,
+            bls12_381_g2_decompress_cost: value.bls12_381_g2_decompress_cost,
+            bls12_381_g1_validate_cost: value.bls12_381_g1_validate_cost,
+            bls12_381_g2_validate_cost: value.bls12_381_g2_validate_cost,
+            bls12_381_one_pair_cost: value.bls12_381_one_pair_cost,
+            bls12_381_additional_pair_cost: value.bls12_381_additional_pair_cost,
+            // The wire shape predates the two modular exponentiation costs, so a restored
+            // budget takes the defaults for them.
+            ..Self::new_with_defaults(false)
+        }
+    }
+}
+
 #[derive(SchemaWrite, SchemaRead)]
-#[wincode(from = "InnerInstruction")]
 pub(crate) struct InnerInstructionWire {
     pub instruction: CompiledInstruction,
     pub stack_height: u8,
+}
+
+impl From<InnerInstruction> for InnerInstructionWire {
+    fn from(value: InnerInstruction) -> Self {
+        Self {
+            instruction: value.instruction,
+            stack_height: value.stack_height,
+        }
+    }
+}
+
+impl From<InnerInstructionWire> for InnerInstruction {
+    fn from(value: InnerInstructionWire) -> Self {
+        Self {
+            instruction: value.instruction,
+            stack_height: value.stack_height,
+        }
+    }
 }
 
 #[derive(SchemaWrite, SchemaRead)]
@@ -250,45 +435,93 @@ impl From<FeatureActivationWire> for (Address, u64) {
 }
 
 #[derive(SchemaWrite, SchemaRead)]
-#[wincode(from = "TransactionMetadata")]
 pub(crate) struct TransactionMetadataWire {
     pub signature: Signature,
     pub logs: Vec<String>,
-    #[wincode(with = "Vec<Vec<InnerInstructionWire>>")]
-    pub inner_instructions: InnerInstructionsList,
+    pub inner_instructions: Vec<Vec<InnerInstructionWire>>,
     pub compute_units_consumed: u64,
     pub return_data: TransactionReturnData,
     pub fee: u64,
 }
 
+impl From<TransactionMetadata> for TransactionMetadataWire {
+    fn from(value: TransactionMetadata) -> Self {
+        Self {
+            signature: value.signature,
+            logs: value.logs,
+            inner_instructions: value
+                .inner_instructions
+                .into_iter()
+                .map(|group| group.into_iter().map(Into::into).collect())
+                .collect(),
+            compute_units_consumed: value.compute_units_consumed,
+            return_data: value.return_data,
+            fee: value.fee,
+        }
+    }
+}
+
+impl From<TransactionMetadataWire> for TransactionMetadata {
+    fn from(value: TransactionMetadataWire) -> Self {
+        Self {
+            signature: value.signature,
+            logs: value.logs,
+            inner_instructions: value
+                .inner_instructions
+                .into_iter()
+                .map(|group| group.into_iter().map(Into::into).collect())
+                .collect(),
+            compute_units_consumed: value.compute_units_consumed,
+            return_data: value.return_data,
+            fee: value.fee,
+        }
+    }
+}
+
 #[derive(SchemaWrite, SchemaRead)]
-#[wincode(from = "FailedTransactionMetadata")]
 pub(crate) struct FailedTransactionMetadataWire {
     pub err: TransactionError,
-    #[wincode(with = "TransactionMetadataWire")]
-    pub meta: TransactionMetadata,
+    pub meta: TransactionMetadataWire,
+}
+
+impl From<FailedTransactionMetadata> for FailedTransactionMetadataWire {
+    fn from(value: FailedTransactionMetadata) -> Self {
+        Self {
+            err: value.err,
+            meta: value.meta.into(),
+        }
+    }
+}
+
+impl From<FailedTransactionMetadataWire> for FailedTransactionMetadata {
+    fn from(value: FailedTransactionMetadataWire) -> Self {
+        Self {
+            err: value.err,
+            meta: value.meta.into(),
+        }
+    }
 }
 
 /// Mirror of `Result<TransactionMetadata, FailedTransactionMetadata>` so
 /// wincode can derive a schema for it.
 #[derive(SchemaWrite, SchemaRead)]
 pub(crate) enum TxResult {
-    Ok(#[wincode(with = "TransactionMetadataWire")] TransactionMetadata),
-    Err(#[wincode(with = "FailedTransactionMetadataWire")] FailedTransactionMetadata),
+    Ok(TransactionMetadataWire),
+    Err(FailedTransactionMetadataWire),
 }
 
 impl TxResult {
     pub fn from_result(r: TransactionResult) -> Self {
         match r {
-            Ok(m) => TxResult::Ok(m),
-            Err(e) => TxResult::Err(e),
+            Ok(m) => TxResult::Ok(m.into()),
+            Err(e) => TxResult::Err(e.into()),
         }
     }
 
     pub fn into_result(self) -> TransactionResult {
         match self {
-            TxResult::Ok(m) => Ok(m),
-            TxResult::Err(e) => Err(e),
+            TxResult::Ok(m) => Ok(m.into()),
+            TxResult::Err(e) => Err(e.into()),
         }
     }
 }
@@ -351,8 +584,7 @@ pub(crate) struct LiteSvmSnapshotV1 {
     pub compute_budget: Option<ComputeBudgetV1>,
     pub sigverify: bool,
     pub blockhash_check: bool,
-    #[wincode(with = "FeeStructureWire")]
-    pub fee_structure: FeeStructure,
+    pub fee_structure: FeeStructureWire,
     pub log_bytes_limit: Option<u64>,
 }
 
@@ -364,12 +596,10 @@ pub(crate) struct LiteSvmSnapshotV2 {
     pub latest_blockhash: Hash,
     pub history: Vec<(Signature, TxResult)>,
     pub history_capacity: u64,
-    #[wincode(with = "Option<ComputeBudgetWire>")]
-    pub compute_budget: Option<ComputeBudget>,
+    pub compute_budget: Option<ComputeBudgetWire>,
     pub sigverify: bool,
     pub blockhash_check: bool,
-    #[wincode(with = "FeeStructureWire")]
-    pub fee_structure: FeeStructure,
+    pub fee_structure: FeeStructureWire,
     pub log_bytes_limit: Option<u64>,
 }
 
@@ -382,7 +612,9 @@ impl From<LiteSvmSnapshotV1> for LiteSvmSnapshotV2 {
             latest_blockhash: value.latest_blockhash,
             history: value.history,
             history_capacity: value.history_capacity,
-            compute_budget: value.compute_budget.map(Into::into),
+            compute_budget: value
+                .compute_budget
+                .map(|budget| ComputeBudgetWire::from(ComputeBudget::from(budget))),
             sigverify: value.sigverify,
             blockhash_check: value.blockhash_check,
             fee_structure: value.fee_structure,

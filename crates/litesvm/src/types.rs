@@ -6,6 +6,7 @@ use {
     solana_message::inner_instruction::InnerInstructionsList,
     solana_program_error::ProgramError,
     solana_signature::Signature,
+    solana_transaction::versioned::VersionedTransaction,
     solana_transaction_context::transaction::TransactionReturnData,
     solana_transaction_error::{TransactionError, TransactionResult as Result},
 };
@@ -66,6 +67,26 @@ pub(crate) struct ExecutionResult {
     /// Whether the transaction can be included in a block
     pub(crate) included: bool,
     pub(crate) fee: u64,
+}
+
+/// A transaction run off a shared [`crate::LiteSVM`], waiting for the commit that lands it.
+pub struct ExecutedTransaction {
+    /// The instance this ran against, which is the only one that may commit it
+    pub(crate) instance: u64,
+    pub(crate) transaction: Option<VersionedTransaction>,
+    pub(crate) result: ExecutionResult,
+    pub(crate) payer_key: Option<Address>,
+    pub(crate) logs: Vec<String>,
+}
+
+impl ExecutedTransaction {
+    /// Take back the transaction that ran, for the caller to record.
+    ///
+    /// A transaction this instance refused before it ran returns nothing, because it belongs in
+    /// no block.
+    pub fn take_transaction(&mut self) -> Option<VersionedTransaction> {
+        self.transaction.take()
+    }
 }
 
 impl Default for ExecutionResult {

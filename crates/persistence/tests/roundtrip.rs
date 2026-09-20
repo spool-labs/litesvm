@@ -4,6 +4,7 @@ use {
     solana_account::Account,
     solana_address::Address,
     solana_clock::Clock,
+    solana_fee_structure::{FeeBin, FeeStructure},
     solana_instruction::{account_meta::AccountMeta, Instruction},
     solana_keypair::Keypair,
     solana_message::Message,
@@ -134,6 +135,49 @@ fn airdrop_keypair_round_trip() {
     let restored = from_bytes(&bytes).unwrap();
 
     assert_eq!(restored.airdrop_pubkey(), airdrop_pk);
+}
+
+#[test]
+fn fee_structure_round_trip() {
+    let mut svm = LiteSVM::new();
+    svm.set_fee_structure(FeeStructure {
+        lamports_per_signature: 4_321,
+        lamports_per_write_lock: 765,
+        compute_fee_bins: vec![FeeBin { limit: 11, fee: 22 }, FeeBin { limit: 33, fee: 44 }],
+    });
+
+    let bytes = to_bytes(&svm).unwrap();
+    let restored = from_bytes(&bytes).unwrap();
+
+    let fee_structure = restored.get_fee_structure();
+    assert_eq!(fee_structure.lamports_per_signature, 4_321);
+    assert_eq!(fee_structure.lamports_per_write_lock, 765);
+    let bins: Vec<(u64, u64)> = fee_structure
+        .compute_fee_bins
+        .iter()
+        .map(|bin| (bin.limit, bin.fee))
+        .collect();
+    assert_eq!(bins, vec![(11, 22), (33, 44)]);
+}
+
+#[test]
+fn failed_transaction_history_round_trip() {
+    let (mut svm, kp) = seeded_svm();
+    let to = Address::new_unique();
+
+    let ix = transfer(&kp.pubkey(), &to, u64::MAX);
+    let tx = Transaction::new(
+        &[&kp],
+        Message::new(&[ix], Some(&kp.pubkey())),
+        svm.latest_blockhash(),
+    );
+    let failed = svm.send_transaction(tx).unwrap_err();
+    let sig = failed.meta.signature;
+
+    let bytes = to_bytes(&svm).unwrap();
+    let restored = from_bytes(&bytes).unwrap();
+
+    assert!(matches!(restored.get_transaction(&sig), Some(Err(_))));
 }
 
 #[test]

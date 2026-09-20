@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use {
     crate::error::{InvalidSysvarDataError, LiteSVMError},
     log::error,
-    parking_lot::RwLock,
+    parking_lot::{RwLock, RwLockReadGuard},
     solana_account::{AccountSharedData, ReadableAccount, WritableAccount},
     solana_address::Address,
     solana_address_lookup_table_interface::{error::AddressLookupError, state::AddressLookupTable},
@@ -23,7 +23,9 @@ use {
         loaded_programs::{
             ProgramCacheForTxBatch, ProgramRuntimeEnvironment, ProgramRuntimeEnvironments,
         },
-        program_cache_entry::{ProgramCacheEntry, ProgramCacheEntryOwner, ProgramCacheEntryType},
+        program_cache_entry::{
+            ProgramCacheEntry, ProgramCacheEntryOwner, DELAY_VISIBILITY_SLOT_OFFSET,
+        },
         program_metrics::LoadProgramMetrics,
         solana_sbpf::program::BuiltinProgram,
         sysvar_cache::SysvarCache,
@@ -40,11 +42,28 @@ use {
     solana_system_program::{get_system_account_kind, SystemAccountKind},
     solana_sysvar::Sysvar,
     solana_transaction_error::{AddressLoaderError, TransactionError},
-    std::sync::Arc,
+    std::sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     wincode::DeserializeOwned,
 };
 
 pub(crate) type AccountsMap = HashMap<Address, AccountSharedData>;
+
+/// Stamps handed to program caches, so a copy of one says which cache and which edit of it
+static PROGRAMS_EDITED: AtomicU64 = AtomicU64::new(0);
+
+fn next_programs_stamp() -> u64 {
+    PROGRAMS_EDITED.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Numbers handed to instances, so a transaction says which one it ran against
+static INSTANCES: AtomicU64 = AtomicU64::new(0);
+
+fn next_instance() -> u64 {
+    INSTANCES.fetch_add(1, Ordering::Relaxed)
+}
 
 const FEES_ID: Address = Address::from_str_const("SysvarFees111111111111111111111111111111111");
 const RECENT_BLOCKHASHES_ID: Address =
@@ -75,7 +94,13 @@ where
 /// Account map shared behind a lock; writers lock once and hand the guard to the _locked methods
 pub struct AccountsDb {
     accounts: Arc<RwLock<AccountsMap>>,
-    pub programs_cache: ProgramCacheForTxBatch,
+    programs_cache: ProgramCacheForTxBatch,
+
+    /// What this instance goes by, which no other instance shares
+    instance: u64,
+
+    /// What this cache stands at, a fresh number on every instance and every edit
+    programs_stamp: u64,
     pub sysvar_cache: SysvarCache,
     pub environments: ProgramRuntimeEnvironments,
     rent: Option<solana_rent::Rent>,
@@ -86,6 +111,8 @@ impl Clone for AccountsDb {
         Self {
             accounts: Arc::new(RwLock::new(self.accounts.read().clone())),
             programs_cache: self.programs_cache.clone(),
+            instance: next_instance(),
+            programs_stamp: next_programs_stamp(),
             sysvar_cache: self.sysvar_cache.clone(),
             environments: ProgramRuntimeEnvironments::new(
                 self.environments.get_env_for_execution().clone(),
@@ -104,7 +131,9 @@ impl Default for AccountsDb {
 
         Self {
             accounts: Arc::new(RwLock::new(AccountsMap::default())),
-            programs_cache: ProgramCacheForTxBatch::new(0),
+            programs_cache: ProgramCacheForTxBatch::new(DELAY_VISIBILITY_SLOT_OFFSET),
+            instance: next_instance(),
+            programs_stamp: next_programs_stamp(),
             sysvar_cache: SysvarCache::default(),
             environments: ProgramRuntimeEnvironments::new(env.clone(), env),
             rent: None,
@@ -113,6 +142,41 @@ impl Default for AccountsDb {
 }
 
 impl AccountsDb {
+    /// The programs a transaction runs against
+    pub(crate) fn programs(&self) -> &ProgramCacheForTxBatch {
+        &self.programs_cache
+    }
+
+    /// The programs for an edit, which every copy taken of them has to be taken again after
+    pub(crate) fn programs_mut(&mut self) -> &mut ProgramCacheForTxBatch {
+        self.programs_stamp = next_programs_stamp();
+        &mut self.programs_cache
+    }
+
+    /// Which cache and which edit of it a copy would be taken from
+    pub(crate) fn programs_stamp(&self) -> u64 {
+        self.programs_stamp
+    }
+
+    /// The slot the program cache stands at, which every copy is set to after it is taken
+    pub(crate) fn programs_slot(&self) -> u64 {
+        self.programs_cache.slot()
+    }
+
+    /// Move the cache to `slot`, which hands out no stamp because it retakes no copy
+    ///
+    /// The cache stands one slot ahead of the chain, so a program deployed in `slot` is usable
+    /// in it.
+    pub(crate) fn set_programs_slot(&mut self, slot: u64) {
+        self.programs_cache
+            .set_slot_for_tests(slot.saturating_add(DELAY_VISIBILITY_SLOT_OFFSET));
+    }
+
+    /// The instance a transaction runs against, which is the one that may commit it
+    pub(crate) fn instance(&self) -> u64 {
+        self.instance
+    }
+
     pub fn get_account(&self, pubkey: &Address) -> Option<AccountSharedData> {
         self.accounts.read().get(pubkey).cloned()
     }
@@ -129,6 +193,11 @@ impl AccountsDb {
         let map = self.accounts.read();
         let mut iter = map.iter();
         f(&mut iter)
+    }
+
+    /// The account map under one guard, for a caller loading a whole transaction at once
+    pub(crate) fn read_accounts(&self) -> RwLockReadGuard<'_, AccountsMap> {
+        self.accounts.read()
     }
 
     pub(crate) fn share_accounts(&self) -> Arc<RwLock<AccountsMap>> {
@@ -160,6 +229,8 @@ impl AccountsDb {
         Self {
             accounts: Arc::new(RwLock::new(working)),
             programs_cache: self.programs_cache.clone(),
+            instance: next_instance(),
+            programs_stamp: next_programs_stamp(),
             sysvar_cache: self.sysvar_cache.clone(),
             environments: ProgramRuntimeEnvironments::new(
                 self.environments.get_env_for_execution().clone(),
@@ -202,7 +273,7 @@ impl AccountsDb {
             && account.owner() != &native_loader::ID
         {
             let loaded_program = self.load_program(map, &account)?;
-            self.programs_cache
+            self.programs_mut()
                 .replenish(pubkey, Arc::new(loaded_program));
         } else {
             self.maybe_handle_sysvar_account(map, pubkey, &account)?;
@@ -233,7 +304,7 @@ impl AccountsDb {
             CLOCK_ID => {
                 let parsed = Clock::deserialize_from(account.data())
                     .map_err(|_| InvalidSysvarDataError::Clock)?;
-                self.programs_cache.set_slot_for_tests(parsed.slot);
+                self.set_programs_slot(parsed.slot);
                 self.sysvar_cache.set_sysvar_for_tests(&parsed);
             }
             EPOCH_REWARDS_ID => {
@@ -300,11 +371,6 @@ impl AccountsDb {
         Ok(())
     }
 
-    /// Skip the executable() checks for builtin accounts
-    pub(crate) fn add_builtin_account(&mut self, address: Address, data: AccountSharedData) {
-        self.accounts.write().insert(address, data);
-    }
-
     /// Rebuilds the sysvar cache from account data already in the map
     #[cfg(feature = "persistence-internal")]
     pub(crate) fn rebuild_sysvar_cache(&mut self) {
@@ -318,7 +384,7 @@ impl AccountsDb {
                 }
             });
         if let Ok(clock) = self.sysvar_cache.get_clock() {
-            self.programs_cache.set_slot_for_tests(clock.slot);
+            self.set_programs_slot(clock.slot);
         }
         self.rent = self
             .sysvar_cache
@@ -340,7 +406,7 @@ impl AccountsDb {
 
         for (key, account) in executable_accounts {
             let loaded = self.load_program(&map, &account)?;
-            self.programs_cache.replenish(key, Arc::new(loaded));
+            self.programs_mut().replenish(key, Arc::new(loaded));
         }
         Ok(())
     }
@@ -375,13 +441,11 @@ impl AccountsDb {
         let slot = self.sysvar_cache.get_clock().map(|c| c.slot).unwrap_or(0);
 
         if bpf_loader::check_id(owner) || bpf_loader_deprecated::check_id(owner) {
-            ProgramCacheEntry::new(
+            ProgramCacheEntry::load(
                 owner,
                 program_runtime_for_execution,
                 slot,
-                slot,
                 program_account.data(),
-                program_account.data().len(),
                 metrics,
             )
             .map_err(|e| {
@@ -399,28 +463,22 @@ impl AccountsDb {
                 return Err(InstructionError::InvalidAccountData);
             };
             let Some(programdata_account) = map.get(&programdata_address) else {
-                return Ok(ProgramCacheEntry::new_tombstone(
+                return Ok(ProgramCacheEntry::new_closed_tombstone(
                     slot,
                     ProgramCacheEntryOwner::LoaderV3,
-                    ProgramCacheEntryType::Closed,
                 ));
             };
             let program_data = programdata_account.data();
             if let Some(programdata) =
                 program_data.get(UpgradeableLoaderState::size_of_programdata_metadata()..)
             {
-                ProgramCacheEntry::new(
+                ProgramCacheEntry::load(
                     owner,
                     program_runtime_for_execution,
                     slot,
-                    slot,
                     programdata,
-                    program_account
-                        .data()
-                        .len()
-                        .saturating_add(program_data.len()),
                     metrics).map_err(|e| {
-                        error!("Error encountered when calling ProgramCacheEntry::new() for bpf_loader_upgradeable: {e:?}");
+                        error!("Error encountered when calling ProgramCacheEntry::load() for bpf_loader_upgradeable: {e:?}");
                         InstructionError::InvalidAccountData
                     })
             } else {
@@ -432,17 +490,17 @@ impl AccountsDb {
                 .data()
                 .get(LoaderV4State::program_data_offset()..)
             {
-                ProgramCacheEntry::new(
+                ProgramCacheEntry::load(
                     &loader_v4::id(),
                     program_runtime_for_execution,
                     slot,
-                    slot,
                     elf_bytes,
-                    program_account.data().len(),
                     metrics,
                 )
                 .map_err(|_| {
-                    error!("Error encountered when calling LoadedProgram::new() for loader_v4.");
+                    error!(
+                        "Error encountered when calling ProgramCacheEntry::load() for loader_v4."
+                    );
                     InstructionError::InvalidAccountData
                 })
             } else {

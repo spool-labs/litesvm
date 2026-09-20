@@ -292,7 +292,6 @@ Other things you can do with `litesvm` include:
 | `hashbrown` | Switches internal hash maps to `hashbrown`. |
 | `serde` | Enables serde serialization/deserialization on internal types. |
 | `nodejs-internal` | Used by the Node.js bindings; not intended for direct use. |
-| `internal-test` | Enables internal test helpers; not intended for direct use. |
 
 ## When should I use `solana-test-validator`?
 
@@ -332,7 +331,8 @@ use {
         programs::load_default_programs,
         reader::SharedHash,
         types::{
-            ExecutionResult, FailedTransactionMetadata, TransactionMetadata, TransactionResult,
+            ExecutedTransaction, ExecutionResult, FailedTransactionMetadata, TransactionMetadata,
+            TransactionResult,
         },
         utils::{
             create_blockhash,
@@ -368,7 +368,7 @@ use {
         loaded_programs::{
             ProgramCacheForTxBatch, ProgramRuntimeEnvironment, ProgramRuntimeEnvironments,
         },
-        program_cache_entry::{ProgramCacheEntry, DELAY_VISIBILITY_SLOT_OFFSET},
+        program_cache_entry::ProgramCacheEntry,
         program_metrics::LoadProgramMetrics,
         solana_sbpf::program::BuiltinProgram,
     },
@@ -385,7 +385,7 @@ use {
     solana_stake_history::StakeHistory,
     solana_svm_log_collector::LogCollector,
     solana_svm_timings::ExecuteTimings,
-    solana_svm_transaction::svm_message::SVMStaticMessage,
+    solana_svm_transaction::svm_message::{SVMMessage, SVMStaticMessage},
     solana_syscalls::create_program_runtime_environment,
     solana_system_program::{get_system_account_kind, SystemAccountKind},
     solana_sysvar::Sysvar,
@@ -720,19 +720,25 @@ impl LiteSVM {
 
     #[cfg_attr(feature = "nodejs-internal", qualifiers(pub))]
     fn set_builtins(&mut self) {
+        let (lamports, rent_epoch) = solana_account::DUMMY_INHERITABLE_ACCOUNT_FIELDS;
         BUILTINS.iter().for_each(|builtint| {
             if builtint
                 .enable_feature_id
                 .is_none_or(|x| self.feature_set.is_active(&x))
             {
-                let loaded_program =
-                    ProgramCacheEntry::new_builtin(0, builtint.name.len(), builtint.register_fn);
+                let loaded_program = ProgramCacheEntry::new_builtin(0, builtint.register_fn);
                 self.accounts
-                    .programs_cache
+                    .programs_mut()
                     .replenish(builtint.program_id, Arc::new(loaded_program));
-                self.accounts.add_builtin_account(
+                self.accounts.add_account_no_checks(
                     builtint.program_id,
-                    crate::utils::create_loadable_account_for_test(builtint.name),
+                    AccountSharedData::from(Account {
+                        lamports,
+                        owner: native_loader::id(),
+                        data: builtint.name.as_bytes().to_vec(),
+                        executable: true,
+                        rent_epoch,
+                    }),
                 );
             }
         });
@@ -1042,12 +1048,11 @@ impl LiteSVM {
                 .get_clock()
                 .unwrap_or_default()
                 .slot,
-            1,
             entrypoint,
         );
 
         self.accounts
-            .programs_cache
+            .programs_mut()
             .replenish(program_id, Arc::new(builtin));
 
         let mut account = AccountSharedData::new(1, 1, &native_loader::id());
@@ -1080,7 +1085,7 @@ impl LiteSVM {
             .unwrap_or_default()
             .slot;
 
-        let program_size = if bpf_loader_upgradeable::check_id(loader_id) {
+        let _ = if bpf_loader_upgradeable::check_id(loader_id) {
             let (programdata_address, _bump) =
                 Address::find_program_address(&[program_id.as_ref()], loader_id);
 
@@ -1138,38 +1143,19 @@ impl LiteSVM {
             )));
         };
 
-        let effective_slot = current_slot.saturating_add(DELAY_VISIBILITY_SLOT_OFFSET);
         let program_runtime_for_deployment =
             self.accounts.environments.get_env_for_deployment().clone();
-        let mut loaded_program = if PREVERIFIED {
-            // Safety: PREVERIFIED means the program was previously verified.
-            unsafe {
-                ProgramCacheEntry::reload(
-                    loader_id,
-                    program_runtime_for_deployment.clone(),
-                    current_slot,
-                    effective_slot,
-                    program_bytes,
-                    program_size,
-                    &mut LoadProgramMetrics::default(),
-                )
-            }
-        } else {
-            ProgramCacheEntry::new(
-                loader_id,
-                program_runtime_for_deployment,
-                current_slot,
-                effective_slot,
-                program_bytes,
-                program_size,
-                &mut LoadProgramMetrics::default(),
-            )
-        }
+        let loaded_program = ProgramCacheEntry::load(
+            loader_id,
+            program_runtime_for_deployment,
+            current_slot,
+            program_bytes,
+            &mut LoadProgramMetrics::default(),
+        )
         .map_err(|e| LiteSVMError::ProgramLoad(e.to_string()))?;
-        loaded_program.effective_slot = current_slot;
 
         self.accounts
-            .programs_cache
+            .programs_mut()
             .replenish(program_id, Arc::new(loaded_program));
 
         Ok(())
@@ -1316,7 +1302,7 @@ impl LiteSVM {
             message,
             self.fee_structure.lamports_per_signature,
             prioritization_fee,
-            FeeFeatures::from(&self.feature_set),
+            FeeFeatures {},
         );
         let mut validated_fee_payer = false;
         let mut payer_key = None;
@@ -1333,6 +1319,9 @@ impl LiteSVM {
         }
 
         let mut pre_rent_state_infos = Vec::with_capacity(account_keys.len());
+        // One guard over the whole load, the way agave's loader reads a transaction's accounts
+        // in a single pass, so a transaction takes the map once however many accounts it lists.
+        let loaded = self.accounts.read_accounts();
         let maybe_accounts = account_keys
             .iter()
             .enumerate()
@@ -1343,10 +1332,11 @@ impl LiteSVM {
                     // https://github.com/anza-xyz/agave/blob/v4.2.0/svm/src/account_loader.rs#L613-L618
                     (0, construct_instructions_account(message)?)
                 } else {
-                    let is_instruction_account = message.is_instruction_account(i);
-                    let (loaded_size, mut account) = self
-                        .accounts
-                        .get_account(key)
+                    let is_instruction_account =
+                        SVMStaticMessage::is_instruction_account(message, i);
+                    let (loaded_size, mut account) = loaded
+                        .get(key)
+                        .cloned()
                         .map(|acc| {
                             (
                                 TRANSACTION_ACCOUNT_BASE_SIZE.saturating_add(acc.data().len()),
@@ -1391,7 +1381,7 @@ impl LiteSVM {
                 Ok((*key, account))
             })
             .collect::<solana_transaction_error::TransactionResult<Vec<_>>>();
-        let mut accounts = match maybe_accounts {
+        let accounts = match maybe_accounts {
             Ok(accs) => accs,
             Err(e) => {
                 return (Err(e), accumulated_consume_units, None, fee, payer_key);
@@ -1407,7 +1397,6 @@ impl LiteSVM {
                 payer_key,
             );
         }
-        let builtins_start_index = accounts.len();
         let maybe_program_indices = tx
             .message()
             .instructions()
@@ -1429,29 +1418,22 @@ impl LiteSVM {
                     return Ok(program_index as IndexOfAccount);
                 }
 
-                if !accounts
-                    .get(builtins_start_index..)
-                    .ok_or(TransactionError::ProgramAccountNotFound)?
-                    .iter()
-                    .any(|(key, _)| key == owner_id)
-                {
-                    let owner_account = self.accounts.get_account(owner_id).unwrap();
-                    if !native_loader::check_id(owner_account.owner()) {
-                        error!(
-                            "Owner account {owner_id} is not owned by the native loader program."
-                        );
-                        return Err(TransactionError::InvalidProgramForExecution);
-                    }
-                    if !owner_account.executable() {
-                        error!("Owner account {owner_id} is not executable");
-                        return Err(TransactionError::InvalidProgramForExecution);
-                    }
-                    //Add program_id to the stuff
-                    accounts.push((*owner_id, owner_account));
+                // The loader account stays out of the transaction context, because agave sizes
+                // an instruction's deduplication map by the message's account keys.
+                let owner_account = loaded.get(owner_id).cloned().unwrap();
+                if !native_loader::check_id(owner_account.owner()) {
+                    error!("Owner account {owner_id} is not owned by the native loader program.");
+                    return Err(TransactionError::InvalidProgramForExecution);
+                }
+                if !owner_account.executable() {
+                    error!("Owner account {owner_id} is not executable");
+                    return Err(TransactionError::InvalidProgramForExecution);
                 }
                 Ok(program_index as IndexOfAccount)
             })
             .collect::<Result<Vec<u16>, TransactionError>>();
+
+        drop(loaded);
 
         match maybe_program_indices {
             Ok(program_indices) => {
@@ -1521,49 +1503,21 @@ impl LiteSVM {
         }
     }
 
-    fn execute_transaction_no_verify(
-        &mut self,
-        tx: VersionedTransaction,
-        log_collector: Rc<RefCell<LogCollector>>,
-    ) -> ExecutionResult {
-        map_sanitize_result(self.sanitize_transaction_no_verify(tx), |s_tx| {
-            self.execute_sanitized_transaction(&s_tx, log_collector)
-        })
-    }
-
-    fn execute_transaction(
-        &mut self,
-        tx: VersionedTransaction,
-        log_collector: Rc<RefCell<LogCollector>>,
-    ) -> ExecutionResult {
-        map_sanitize_result(self.sanitize_transaction(tx), |s_tx| {
-            self.execute_sanitized_transaction(&s_tx, log_collector)
-        })
-    }
-
-    fn execute_sanitized_transaction(
-        &mut self,
+    fn execute_sanitized_transaction_readonly(
+        &self,
         sanitized_tx: &SanitizedTransaction,
         log_collector: Rc<RefCell<LogCollector>>,
     ) -> ExecutionResult {
-        // Lend the program cache instead of cloning it per transaction; draining keeps it unchanged
-        let mut program_cache = std::mem::take(&mut self.accounts.programs_cache);
-        let result = self.execute_sanitized_transaction_inner(
-            sanitized_tx,
-            log_collector,
-            &mut program_cache,
-        );
-        program_cache.drain_modified_entries();
-        self.accounts.programs_cache = program_cache;
-        result
+        self.execute_sanitized_transaction_uncommitted(sanitized_tx, log_collector)
+            .0
     }
 
-    fn execute_sanitized_transaction_inner(
-        &mut self,
+    /// Process a transaction off &self, handing back the payer the caller owes the fee to
+    fn execute_sanitized_transaction_uncommitted(
+        &self,
         sanitized_tx: &SanitizedTransaction,
         log_collector: Rc<RefCell<LogCollector>>,
-        program_cache: &mut ProgramCacheForTxBatch,
-    ) -> ExecutionResult {
+    ) -> (ExecutionResult, Option<Address>) {
         let CheckAndProcessTransactionSuccess {
             core:
                 CheckAndProcessTransactionSuccessCore {
@@ -1573,57 +1527,15 @@ impl LiteSVM {
                 },
             fee,
             payer_key,
-        } = match self.check_and_process_transaction(sanitized_tx, log_collector, program_cache) {
-            Ok(value) => value,
-            Err(value) => return value,
-        };
-        if let Some(ctx) = context {
-            let mut exec_result =
-                execution_result_if_context(sanitized_tx, ctx, result, compute_units_consumed, fee);
-
-            if let Some(payer) = payer_key.filter(|_| exec_result.tx_result.is_err()) {
-                exec_result.tx_result = self
-                    .accounts
-                    .withdraw(&payer, fee)
-                    .and(exec_result.tx_result);
-            }
-            exec_result
-        } else {
-            ExecutionResult {
-                tx_result: result,
-                compute_units_consumed,
-                fee,
-                ..Default::default()
-            }
-        }
-    }
-
-    fn execute_sanitized_transaction_readonly(
-        &self,
-        sanitized_tx: &SanitizedTransaction,
-        log_collector: Rc<RefCell<LogCollector>>,
-    ) -> ExecutionResult {
-        let CheckAndProcessTransactionSuccess {
-            core:
-                CheckAndProcessTransactionSuccessCore {
-                    result,
-                    compute_units_consumed,
-                    context,
-                },
-            fee,
-            ..
         } = {
-            let mut program_cache = self.accounts.programs_cache.clone();
-            match self.check_and_process_transaction(
-                sanitized_tx,
-                log_collector,
-                &mut program_cache,
-            ) {
+            match self.with_program_cache(|program_cache| {
+                self.check_and_process_transaction(sanitized_tx, log_collector, program_cache)
+            }) {
                 Ok(value) => value,
-                Err(value) => return value,
+                Err(value) => return (value, None),
             }
         };
-        if let Some(ctx) = context {
+        let executed = if let Some(ctx) = context {
             execution_result_if_context(sanitized_tx, ctx, result, compute_units_consumed, fee)
         } else {
             ExecutionResult {
@@ -1632,7 +1544,45 @@ impl LiteSVM {
                 fee,
                 ..Default::default()
             }
+        };
+        (executed, payer_key)
+    }
+
+    /// Run `f` against the copy of the program cache this thread holds
+    ///
+    /// The copy is held for the next transaction as long as it comes back clean. A transaction
+    /// that wrote anything into it drops the whole copy, so every field of it resets and no
+    /// state of one run reaches the next. A cache edited anywhere hands out a new stamp, and
+    /// the stamp is what retakes the copy.
+    fn with_program_cache<R>(&self, f: impl FnOnce(&mut ProgramCacheForTxBatch) -> R) -> R {
+        thread_local! {
+            static HELD: RefCell<Option<(u64, ProgramCacheForTxBatch)>> =
+                const { RefCell::new(None) };
         }
+
+        let stamp = self.accounts.programs_stamp();
+        HELD.with(|held| {
+            // A transaction reached from inside another one takes a copy of its own.
+            let Ok(mut held) = held.try_borrow_mut() else {
+                return f(&mut self.accounts.programs().clone());
+            };
+            let copy = match held.take() {
+                Some((taken, copy)) if taken == stamp => copy,
+                _ => self.accounts.programs().clone(),
+            };
+            let cache = &mut held.insert((stamp, copy)).1;
+            // The slot moves without a new stamp, so a copy is put on it here.
+            cache.set_slot_for_tests(self.accounts.programs_slot());
+            let out = f(cache);
+            let marked = cache.hit_max_limit
+                || cache.loaded_missing
+                || cache.merged_modified
+                || !cache.drain_modified_entries().is_empty();
+            if marked {
+                held.take();
+            }
+            out
+        })
     }
 
     fn check_and_process_transaction<'a, 'b>(
@@ -1711,25 +1661,80 @@ impl LiteSVM {
 
     /// Submits a signed transaction.
     pub fn send_transaction(&mut self, tx: impl Into<VersionedTransaction>) -> TransactionResult {
+        let executed = self.execute_transaction_uncommitted(tx);
+        self.commit_transaction(executed)
+    }
+
+    /// Runs a signed transaction against this instance, writing nothing back.
+    ///
+    /// The pair of this and [`LiteSVM::commit_transaction`] is [`LiteSVM::send_transaction`]
+    /// split in two, for a caller running a batch of transactions that share no writable
+    /// account: every one of them executes off `&self` at once, and the commits land in
+    /// whatever order the caller keeps.
+    ///
+    /// What comes back belongs to this instance, and only this instance may commit it.
+    pub fn execute_transaction_uncommitted(
+        &self,
+        tx: impl Into<VersionedTransaction>,
+    ) -> ExecutedTransaction {
         let log_collector = new_log_collector(self.log_bytes_limit);
         let vtx: VersionedTransaction = tx.into();
+        let sanitized = if self.sigverify {
+            self.sanitize_transaction(vtx)
+        } else {
+            self.sanitize_transaction_no_verify(vtx)
+        };
+        let (transaction, result, payer_key) = match sanitized {
+            Ok(s_tx) => {
+                let (result, payer_key) =
+                    self.execute_sanitized_transaction_uncommitted(&s_tx, log_collector.clone());
+                (Some(s_tx.into_versioned_transaction()), result, payer_key)
+            }
+            Err(refused) => (None, refused, None),
+        };
+        let Ok(logs) = Rc::try_unwrap(log_collector).map(|lc| lc.into_inner().messages) else {
+            unreachable!("Log collector should not be used after execution returns")
+        };
+        ExecutedTransaction {
+            instance: self.accounts.instance(),
+            transaction,
+            result,
+            payer_key,
+            logs,
+        }
+    }
+
+    /// Lands what [`LiteSVM::execute_transaction_uncommitted`] ran.
+    ///
+    /// The transaction has to be one this same instance executed.
+    pub fn commit_transaction(&mut self, executed: ExecutedTransaction) -> TransactionResult {
+        let ExecutedTransaction {
+            instance,
+            transaction: _,
+            result,
+            payer_key,
+            logs,
+        } = executed;
+        debug_assert_eq!(
+            instance,
+            self.accounts.instance(),
+            "a transaction commits to the instance it ran against"
+        );
         let ExecutionResult {
             post_accounts,
-            tx_result,
+            mut tx_result,
             signature,
             compute_units_consumed,
             inner_instructions,
             return_data,
             included,
             fee,
-        } = if self.sigverify {
-            self.execute_transaction(vtx, log_collector.clone())
-        } else {
-            self.execute_transaction_no_verify(vtx, log_collector.clone())
-        };
-        let Ok(logs) = Rc::try_unwrap(log_collector).map(|lc| lc.into_inner().messages) else {
-            unreachable!("Log collector should not be used after send_transaction returns")
-        };
+        } = result;
+
+        if let Some(payer) = payer_key.filter(|_| tx_result.is_err()) {
+            tx_result = self.accounts.withdraw(&payer, fee).and(tx_result);
+        }
+
         let meta = TransactionMetadata {
             logs,
             inner_instructions,
@@ -1752,7 +1757,7 @@ impl LiteSVM {
             }
             self.accounts
                 .sync_accounts(post_accounts)
-                .expect("It shouldn't be possible to write invalid sysvars in send_transaction.");
+                .expect("It shouldn't be possible to write invalid sysvars in commit_transaction.");
 
             TransactionResult::Ok(meta)
         }
@@ -1853,11 +1858,6 @@ impl LiteSVM {
         self.sigverify
     }
 
-    #[cfg(feature = "internal-test")]
-    pub fn get_feature_set(&self) -> Arc<FeatureSet> {
-        self.feature_set.clone().into()
-    }
-
     fn check_transaction_age(&self, tx: &SanitizedTransaction) -> Result<(), ExecutionResult> {
         self.check_transaction_age_inner(tx)
             .map_err(|e| ExecutionResult {
@@ -1888,8 +1888,7 @@ impl LiteSVM {
     }
 
     fn check_message_for_nonce(&self, message: &SanitizedMessage) -> bool {
-        message
-            .get_durable_nonce()
+        SVMMessage::get_durable_nonce(message)
             .and_then(|nonce_address| self.accounts.get_account(nonce_address))
             .and_then(|nonce_account| {
                 solana_nonce_account::verify_nonce_account(
@@ -1898,8 +1897,7 @@ impl LiteSVM {
                 )
             })
             .is_some_and(|nonce_data| {
-                message
-                    .get_ix_signers(NONCED_TX_MARKER_IX_INDEX as usize)
+                SVMStaticMessage::get_ix_signers(message, NONCED_TX_MARKER_IX_INDEX as usize)
                     .any(|signer| signer == &nonce_data.authority)
             })
     }

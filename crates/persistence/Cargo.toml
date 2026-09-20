@@ -21,7 +21,6 @@ solana-transaction-error = { workspace = true, features = ["wincode"] }
 agave-feature-set = { workspace = true, features = ["agave-unstable-api"] }
 thiserror.workspace = true
 wincode = { workspace = true, features = ["alloc", "derive", "std"] }
-wincode-derive.workspace = true
 
 [dev-dependencies]
 solana-instruction.workspace = true
@@ -32,6 +31,7 @@ solana-native-token.workspace = true
 solana-message.workspace = true
 solana-transaction = { workspace = true, features = ["verify"] }
 solana-clock.workspace = true
+solana-fee-structure.workspace = true
 tempfile.workspace = true
 
 [lints]

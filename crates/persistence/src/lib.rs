@@ -36,10 +36,10 @@ fn extract_snapshot_v2(svm: &LiteSVM) -> LiteSvmSnapshotV2 {
             .map(|(k, v)| (*k, TxResult::from_result(v.clone())))
             .collect(),
         history_capacity: svm.transaction_history_capacity() as u64,
-        compute_budget: svm.get_compute_budget(),
+        compute_budget: svm.get_compute_budget().map(Into::into),
         sigverify: svm.get_sigverify(),
         blockhash_check: svm.get_blockhash_check(),
-        fee_structure: svm.get_fee_structure().clone(),
+        fee_structure: svm.get_fee_structure().clone().into(),
         log_bytes_limit: svm.get_log_bytes_limit().map(|v| v as u64),
     }
 }
@@ -70,10 +70,10 @@ fn restore_from_snapshot(snapshot: LiteSvmSnapshotV3) -> Result<LiteSVM, Persist
         .with_log_bytes_limit(state.log_bytes_limit.map(|v| v as usize));
 
     if let Some(cb) = state.compute_budget {
-        svm = svm.with_compute_budget(cb);
+        svm = svm.with_compute_budget(cb.into());
     }
 
-    svm.set_fee_structure(state.fee_structure);
+    svm.set_fee_structure(state.fee_structure.into());
     svm.set_latest_blockhash(state.latest_blockhash);
     svm.set_airdrop_keypair(state.airdrop_kp);
     epoch_vote_stakes.sort_unstable_by_key(|(vote_account, _)| *vote_account);
